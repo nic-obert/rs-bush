@@ -2,6 +2,24 @@ use std::ptr::null_mut;
 use std::collections::VecDeque;
 
 
+pub struct NodeHandle<T> (*const BushNode<T>);
+
+impl<T> NodeHandle<T> {
+
+    #[inline(always)]
+    pub const fn as_ptr(&self) -> *const BushNode<T> {
+        self.0
+    }
+
+
+    #[inline(always)]
+    pub const fn as_ref(&self) -> &BushNode<T> {
+        unsafe { &*self.0 }
+    }
+
+}
+
+
 pub struct BushNodeItemIterRight<'a, T> {
 
     node: Option<&'a BushNode<T>>
@@ -344,6 +362,24 @@ impl<T> Bush<T> {
     }
 
 
+    pub fn first_node_handle(&self) -> Option<NodeHandle<T>> {
+        if self.first.is_null() {
+            None
+        } else {
+            Some(NodeHandle(self.first))
+        }
+    }
+
+
+    pub fn last_node_handle(&self) -> Option<NodeHandle<T>> {
+        if self.last.is_null() {
+            None
+        } else {
+            Some(NodeHandle(self.last))
+        }
+    }
+
+
     /// Get the first node of the bush's top layer
     pub fn first_node(&self) -> Option<&BushNode<T>> {
         if self.first.is_null() {
@@ -412,8 +448,10 @@ impl<T> Bush<T> {
 
 
     /// Extrat the given node and its branches, assuming that the node is in the bush's top layer
-    pub fn extract_node(&mut self, node: &BushNode<T>) -> &mut BushNode<T> {
-        let node_ptr = node as *const BushNode<T> as *mut BushNode<T>;
+    /// Assumes the node pointer is not null
+    pub fn extract_node(&mut self, node: NodeHandle<T>) -> &mut BushNode<T> {
+        let node_ptr = node.as_ptr() as *mut BushNode<T>;
+        let node = node.as_ref();
 
         if node_ptr != self.first {
             let left_node = node.left;
@@ -421,6 +459,8 @@ impl<T> Bush<T> {
             unsafe {
                 (*left_node).right = node.right
             }
+        } else {
+            self.first = node.right;
         }
 
         if node_ptr != self.last {
@@ -429,6 +469,8 @@ impl<T> Bush<T> {
             unsafe {
                 (*right_node).left = node.left;
             }
+        } else {
+            self.last = node.left;
         }
 
         unsafe { &mut *node_ptr }
@@ -436,9 +478,11 @@ impl<T> Bush<T> {
 
 
     /// Extract a slice of the bush and the relative branches into a new bush, assumimg the nodes are n the bush's top layer
-    pub fn extract_slice(&mut self, start_node: &BushNode<T>, end_node: &BushNode<T>) -> Bush<T> {
-        let start_ptr = start_node as *const BushNode<T> as *mut BushNode<T>;
-        let end_ptr = end_node as *const BushNode<T> as *mut BushNode<T>;
+    pub fn extract_slice(&mut self, start_node: NodeHandle<T>, end_node: NodeHandle<T>) -> Bush<T> {
+        let start_ptr = start_node.as_ptr() as *mut BushNode<T>;
+        let end_ptr = end_node.as_ptr() as *mut BushNode<T>;
+        let start_node = start_node.as_ref();
+        let end_node = end_node.as_ref();
 
         if start_ptr != self.first {
             let left_node = start_node.left;
@@ -446,6 +490,8 @@ impl<T> Bush<T> {
             unsafe {
                 (*left_node).right = end_node.right;
             }
+        } else {
+            self.first = end_node.right;
         }
 
         if end_ptr != self.last {
@@ -454,6 +500,8 @@ impl<T> Bush<T> {
             unsafe {
                 (*right_node).left = start_node.left;
             }
+        } else {
+            self.last = start_node.left;
         }
 
         Bush {
@@ -611,5 +659,81 @@ impl<T> Drop for Bush<T> {
             node = next_node;
         }
     }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_empty_bush() {
+        let bush: Bush<i32> = Bush::new();
+        assert_eq!(bush.top_layer_length(), 0);
+    }
+
+
+    #[test]
+    fn append_to_bush() {
+        let mut bush = Bush::new();
+        bush.append(1);
+        bush.append(2);
+        bush.append(3);
+        assert_eq!(bush.top_layer_length(), 3);
+    }
+
+
+    #[test]
+    fn iter_bush() {
+        let mut bush = Bush::new();
+        bush.append(1);
+        bush.append(2);
+        bush.append(3);
+        let mut iter = bush.iter_items();
+        assert_eq!(iter.next(), Some(&1));
+        assert_eq!(iter.next(), Some(&2));
+        assert_eq!(iter.next(), Some(&3));
+        assert_eq!(iter.next(), None);
+    }
+
+
+    #[test]
+    fn iter_bush_nodes() {
+        let mut bush = Bush::new();
+        bush.append(1);
+        bush.append(2);
+        bush.append(3);
+        let mut iter = bush.iter_nodes();
+        assert_eq!(iter.next().map(|n| n.item), Some(1));
+        assert_eq!(iter.next().map(|n| n.item), Some(2));
+        assert_eq!(iter.next().map(|n| n.item), Some(3));
+        assert_eq!(iter.next().map(|n| n.item), None);
+    }
+
+
+    #[test]
+    fn extract_node() {
+        let mut bush = Bush::new();
+        bush.append(1);
+        bush.append(2);
+        bush.append(3);
+        let node = bush.extract_node(bush.first_node_handle().unwrap());
+        assert_eq!(node.item, 1);
+        assert_eq!(bush.top_layer_length(), 2);
+    }
+
+    
+    #[test]
+    fn extract_slice() {
+        let mut bush = Bush::new();
+        bush.append(1);
+        bush.append(2);
+        bush.append(3);
+        let slice = bush.extract_slice(bush.first_node_handle().unwrap(), bush.last_node_handle().unwrap());
+        assert_eq!(slice.top_layer_length(), 3);
+        assert_eq!(bush.top_layer_length(), 0);
+    }
+
+
 }
 
