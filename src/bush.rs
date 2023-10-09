@@ -1,8 +1,8 @@
 use std::{ptr::null_mut, collections::VecDeque};
 
 
-pub type IterItems<'a, T> = std::iter::Map<BushNodeIterRight<'a, T>, fn(&BushNode<T>) -> &T>;
-pub type IterItemsMut<'a, T> = std::iter::Map<BushNodeIterRightMut<'a, T>, fn(&mut BushNode<T>) -> &mut T>;
+pub type IterItems<T, It> = std::iter::Map<It, fn(&BushNode<T>) -> &T>;
+pub type IterItemsMut<T, It> = std::iter::Map<It, fn(&mut BushNode<T>) -> &mut T>;
 
 pub type BushSlice<T> = (Box<BushNode<T>>, Box<BushNode<T>>);
 
@@ -355,43 +355,51 @@ impl<T> BushNode<T> {
     }
 
 
-    /// Get the item to the left, if any
-    pub fn left_item(&self) -> Option<&T> {
+    /// Get the node to the left, if any
+    pub fn left_node_mut(&self) -> Option<&mut BushNode<T>> {
         if self.left.is_null() {
             None
         } else {
             unsafe {
-                Some(&(*self.left).item)
+                Some(&mut *self.left)
             }
         }
+    }
+
+
+    /// Get the node to the right, if any
+    pub fn right_node_mut(&self) -> Option<&mut BushNode<T>> {
+        if self.right.is_null() {
+            None
+        } else {
+            unsafe {
+                Some(&mut *self.right)
+            }
+        }
+    }
+
+
+    /// Get the item to the left, if any
+    pub fn left_item(&self) -> Option<&T> {
+        self.left_node().map(|node| &node.item)
     }
 
 
     /// Get the item to the right, if any
     pub fn right_item(&self) -> Option<&T> {
-        if self.right.is_null() {
-            None
-        } else {
-            unsafe {
-                Some(&(*self.right).item)
-            }
-        }
+        self.right_node().map(|node| &node.item)
     }
 
 
     /// Get an iterator over the items to the left
-    pub fn iter_items_left(&self) -> BushNodeItemIterLeft<'_, T> {
-        BushNodeItemIterLeft { 
-            node: Some(self)
-        }
+    pub fn iter_items_left(&self) -> IterItems<T, BushNodeIterLeft<T>> {
+        self.iter_nodes_left().map(|node| &node.item)
     }
 
 
     /// Get an iterator over the items to the right
-    pub fn iter_items_right(&self) -> BushNodeItemIterRight<'_, T> {
-        BushNodeItemIterRight { 
-            node: Some(self)
-        }
+    pub fn iter_items_right(&self) -> IterItems<T, BushNodeIterRight<T>> {
+        self.iter_nodes_right().map(|node| &node.item)
     }
 
 
@@ -410,13 +418,53 @@ impl<T> BushNode<T> {
         }
     }
 
+
+    pub fn bfs_nodes(&self) -> BFSIter<T> {
+        BFSIter {
+            nodes: self.children.as_ref().map(
+                |children|
+            {
+                let mut nodes = VecDeque::new();
+                if let Some(first_node) = children.first_node() {
+                    nodes.push_back(first_node);
+                }
+                nodes
+            }).unwrap_or(VecDeque::new())
+        }
+    }
+
+
+    pub fn dfs_nodes(&self) -> DFSIter<T> {
+        DFSIter {
+            nodes: self.children.as_ref().map(
+                |children|
+            {
+                let mut nodes = VecDeque::new();
+                if let Some(first_node) = children.first_node() {
+                    nodes.push_back(first_node);
+                }
+                nodes
+            }).unwrap_or(VecDeque::new())
+        }
+    }
+
+
+    pub fn bfs_items(&self) -> IterItems<T, BFSIter<T>> {
+        self.bfs_nodes().map(|node| &node.item)
+    }
+
+
+    pub fn dfs_items(&self) -> IterItems<T, DFSIter<T>> {
+        self.dfs_nodes().map(|node| &node.item)
+    }
+
 }
 
 
 pub struct Bush<T> {
 
     first: *mut BushNode<T>,
-    last: *mut BushNode<T>
+    last: *mut BushNode<T>,
 
 }
 
@@ -535,7 +583,7 @@ impl<T> Bush<T> {
 
 
     /// Get the first node of the bush's top layer
-    pub fn first_node_mut (&self) -> Option<&mut BushNode<T>> {
+    pub fn first_node_mut(&self) -> Option<&mut BushNode<T>> {
         if self.first.is_null() {
             None
         } else {
@@ -554,7 +602,7 @@ impl<T> Bush<T> {
 
     /// Get the nth item of the bush's top layer
     pub fn nth_item(&self, i: usize) -> Option<&T> {
-        self.iter_items().nth(i)
+        self.nth_node(i).map(|node| &node.item)
     }
 
 
@@ -598,13 +646,13 @@ impl<T> Bush<T> {
 
 
     /// Get an iterator over the items of the bush's top layer
-    pub fn iter_items(&self) -> IterItems<T> {
+    pub fn iter_items(&self) -> IterItems<T, BushNodeIterRight<T>> {
         self.iter_nodes().map(|node| &node.item)
     }
 
 
     /// Get an iterator over the items of the bush's top layer
-    pub fn iter_items_mut(&mut self) -> IterItemsMut<T> {
+    pub fn iter_items_mut(&mut self) -> IterItemsMut<T, BushNodeIterRightMut<T>> {
         self.iter_nodes_mut().map(|node| &mut node.item)
     }
 
@@ -703,8 +751,9 @@ impl<T> Bush<T> {
         for node in self.iter_nodes_mut() {
             if let Some(mut children) = node.children.take() {
                 children.flatten();
-                let children = children.extract().unwrap();
-                node.insert_slice_right(children);
+                if let Some(children) = children.extract() {
+                    node.insert_slice_right(children);
+                }
             }
         }
 
@@ -712,19 +761,24 @@ impl<T> Bush<T> {
 
 
     /// Return the first and last node of the bush's top layer, consuming the bush
-    pub fn extract(self) -> Option<BushSlice<T>> {
+    pub fn extract(mut self) -> Option<BushSlice<T>> {
         if self.first.is_null() {
             None
         } else {
+            // Set the first and last nodes to null to avoid dropping them when the bush is dropped
+            let first = self.first;
+            let last = self.last;
+            self.first = null_mut();
+            self.last = null_mut();
             unsafe {
-                Some((Box::from_raw(self.first), Box::from_raw(self.last)))
+                Some((Box::from_raw(first), Box::from_raw(last)))
             }
         }
     }
 
 
     /// Get a breadth first search iterator over the bush
-    pub fn bfs(&self) -> BFSIter<T> {
+    pub fn bfs_nodes(&self) -> BFSIter<T> {
         BFSIter {
             nodes: if let Some(first) = self.first_node() {
                 VecDeque::from(vec![first])
@@ -736,7 +790,7 @@ impl<T> Bush<T> {
 
 
     /// Get a depth first search iterator over the bush
-    pub fn dfs(&self) -> DFSIter<T> {
+    pub fn dfs_nodes(&self) -> DFSIter<T> {
         DFSIter {
             nodes: if let Some(first) = self.first_node() {
                 VecDeque::from(vec![first])
@@ -746,6 +800,18 @@ impl<T> Bush<T> {
         }
     }
 
+
+    /// Get a breadth first search iterator over the bush
+    pub fn bfs_items(&self) -> IterItems<T, BFSIter<T>> {
+        self.bfs_nodes().map(|node| &node.item)
+    }
+
+
+    /// Get a depth first search iterator over the bush
+    pub fn dfs_items(&self) -> IterItems<T, DFSIter<T>> {
+        self.dfs_nodes().map(|node| &node.item)
+    }
+
 }
 
 
@@ -753,7 +819,7 @@ impl<T> Default for Bush<T> {
     fn default() -> Self {
         Self {
             first: null_mut(),
-            last: null_mut()
+            last: null_mut(),
         }
     }
 }
@@ -767,12 +833,13 @@ pub struct BFSIter<'a, T> {
 
 
 impl<'a, T> Iterator for BFSIter<'a, T> {
-    type Item = &'a T;
+    type Item = &'a BushNode<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         
-        if let Some(node) = self.nodes.pop_front() {
-
+        self.nodes.pop_front().map(
+            |node|
+        {
             // Push the same-layer node on the front to give it priority
             if let Some(node) = node.right_node() {
                 self.nodes.push_front(node);
@@ -785,12 +852,8 @@ impl<'a, T> Iterator for BFSIter<'a, T> {
                 }
             }
 
-            Some(&node.item)
-
-        } else {
-            // There are no more nodes to search
-            None
-        }
+            node
+        })
     }
 }
 
@@ -803,12 +866,13 @@ pub struct DFSIter<'a, T> {
 
 
 impl<'a, T> Iterator for DFSIter<'a, T> {
-    type Item = &'a T;
+    type Item = &'a BushNode<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
 
-        if let Some(node) = self.nodes.pop_front() {
-
+        self.nodes.pop_front().map(
+            |node|
+        {
             // Push the same-layer nodes before children nodes to give children priority
             if let Some(right) = node.right_node() {
                 self.nodes.push_front(right);
@@ -820,11 +884,8 @@ impl<'a, T> Iterator for DFSIter<'a, T> {
                 }
             }
 
-            Some(&node.item)
-        } else {
-            // There are no more nodes to search
-            None
-        }
+            node
+        })
     }
 }
 
@@ -832,11 +893,10 @@ impl<'a, T> Iterator for DFSIter<'a, T> {
 impl<T> Drop for Bush<T> {
     fn drop(&mut self) {
         let mut node = self.first;
-        let mut i = 0;
+
         while !node.is_null() {
             let owned_node = unsafe { Box::from_raw(node) };
             node = owned_node.right;
-            i += 1;
         }        
     }
 }
@@ -970,61 +1030,58 @@ mod tests {
     }
 
 
-    // #[test]
-    // fn flatten() {
-    //     let mut bush: Bush<usize> = Bush::new();
+    #[test]
+    fn flatten() {
+        let mut bush: Bush<usize> = Bush::new();
         
-    //     let mut counter = 0;
+        let mut counter = 0;
 
-    //     for _ in 0..10 {
-    //         bush.append(counter);
-    //         counter += 1;
+        for _ in 0..10 {
+            bush.append(counter);
+            counter += 1;
 
-    //         let mut children = Bush::new();
-    //         for _ in 0..10 {
-    //             children.append(counter);
-    //             counter += 1;
-    //         }
+            let mut children = Bush::new();
+            for _ in 0..10 {
+                children.append(counter);
+                counter += 1;
+            }
             
-    //         bush.last_node_mut().unwrap().children = Some(children);
-    //     }
+            bush.last_node_mut().unwrap().children = Some(children);
+        }
 
-    //     assert_eq!(bush.total_node_count(), counter);
+        assert_eq!(bush.total_node_count(), counter);
 
-    //     bush.flatten();
+        bush.flatten();
 
-    //     assert_eq!(bush.total_node_count(), counter);
+        assert_eq!(bush.total_node_count(), counter);
 
-    //     bush.iter_nodes().enumerate().for_each(|(i, item)| {
-    //         assert_eq!(i, item.item);
-    //     });
-    // }
+        bush.iter_nodes().enumerate().for_each(|(i, item)| {
+            assert_eq!(i, item.item);
+        });
+    }
 
 
-    // #[test]
-    // fn flatten() {
-    //     let mut bush: Bush<usize> = Bush::new();
-        
-    //     let mut counter = 0;
+    #[test]
+    fn extract_bush() {
+        let mut bush: Bush<usize> = Bush::new();
 
-    //     for _ in 0..2 {
-    //         bush.append(counter);
-    //         counter += 1;
+        let mut counter = 0;
+        for _ in 0..10 {
+            bush.append(counter);
+            counter += 1;
 
-    //         let mut children = Bush::new();
-    //         for _ in 0..2 {
-    //             children.append(counter);
-    //             counter += 1;
-    //         }
-            
-    //         bush.last_node_mut().unwrap().children = Some(children);
-    //     }
+            let mut children = Bush::new();
+            for _ in 0..10 {
+                children.append(counter);
+                counter += 1;
+            }
 
-    //     println!("Before flatten: {:?}", bush.total_node_count());
+            bush.last_node_mut().unwrap().children = Some(children);
+        }
 
-    //     bush.flatten();
+        let _extracted = bush.extract().unwrap();
 
-    // }
+    }
 
     
 

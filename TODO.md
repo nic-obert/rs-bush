@@ -6,7 +6,6 @@ Project Description
 
 ### Todo
 
-- [ ] fix flatten method that causes misaligned pointers when dropping the bush  
 - [ ] implement serialization and deserialization  
 
 ### In Progress
@@ -14,4 +13,5 @@ Project Description
 
 ### Done ✓
 
+- [x] fix flatten method that causes misaligned pointers when dropping the bush  
 
