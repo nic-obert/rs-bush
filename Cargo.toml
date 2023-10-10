@@ -1,7 +1,13 @@
 [package]
-name = "bush"
+name = "rs-bush"
 version = "0.1.0"
 edition = "2021"
+authors = ["Nicholas Obert"]
+description = "A Rust implementation of the Bush data structure."
+license = "MIT"
+repository = "https://github.com/nic-obert/rs-bush"
+readme = "README.md"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
