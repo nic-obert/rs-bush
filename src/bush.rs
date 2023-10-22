@@ -429,7 +429,7 @@ impl<T> BushNode<T> {
                     nodes.push_back(first_node);
                 }
                 nodes
-            }).unwrap_or(VecDeque::new())
+            }).unwrap_or_default()
         }
     }
 
@@ -444,7 +444,7 @@ impl<T> BushNode<T> {
                     nodes.push_back(first_node);
                 }
                 nodes
-            }).unwrap_or(VecDeque::new())
+            }).unwrap_or_default()
         }
     }
 
