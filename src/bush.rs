@@ -23,8 +23,15 @@ impl<T> NodeHandle<T> {
     }
 
 
+    #[inline(always)]
     pub const fn clone(&self) -> NodeHandle<T> {
         NodeHandle(self.0)
+    }
+
+
+    #[inline(always)]
+    pub fn as_mut(self) -> &'static mut BushNode<T> {
+        unsafe { &mut *(self.0 as *mut BushNode<T>) }
     }
 
 }
