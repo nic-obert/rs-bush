@@ -30,6 +30,13 @@ impl<T> NodeHandle<T> {
 }
 
 
+impl<T> PartialEq for NodeHandle<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+
 pub struct BushNodeItemIterRight<'a, T> {
 
     node: Option<&'a BushNode<T>>
