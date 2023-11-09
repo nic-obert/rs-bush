@@ -7,6 +7,7 @@ pub type IterItemsMut<T, It> = std::iter::Map<It, fn(&mut BushNode<T>) -> &mut T
 pub type BushSlice<T> = (Box<BushNode<T>>, Box<BushNode<T>>);
 
 
+#[derive(Clone)]
 pub struct NodeHandle<T> (*const BushNode<T>);
 
 impl<T> NodeHandle<T> {
