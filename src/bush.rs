@@ -258,8 +258,8 @@ impl<T> BushNode<T> {
     }
 
 
-    pub fn into_handle(self) -> NodeHandle<T> {
-        NodeHandle(Box::into_raw(Box::new(self)))
+    pub fn into_handle(&self) -> NodeHandle<T> {
+        NodeHandle(self as *const BushNode<T>)
     }
 
 
