@@ -258,6 +258,11 @@ impl<T> BushNode<T> {
     }
 
 
+    pub fn into_handle(self) -> NodeHandle<T> {
+        NodeHandle(Box::into_raw(Box::new(self)))
+    }
+
+
     /// Insert the given slice to the left while preserving the links
     pub fn insert_slice_left(&mut self, slice: BushSlice<T>) {
         let start_node = Box::leak(slice.0);
