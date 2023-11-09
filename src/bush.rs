@@ -7,7 +7,6 @@ pub type IterItemsMut<T, It> = std::iter::Map<It, fn(&mut BushNode<T>) -> &mut T
 pub type BushSlice<T> = (Box<BushNode<T>>, Box<BushNode<T>>);
 
 
-#[derive(Clone)]
 pub struct NodeHandle<T> (*const BushNode<T>);
 
 impl<T> NodeHandle<T> {
@@ -21,6 +20,11 @@ impl<T> NodeHandle<T> {
     #[inline(always)]
     pub const fn as_ref(&self) -> &BushNode<T> {
         unsafe { &*self.0 }
+    }
+
+
+    pub const fn clone(&self) -> NodeHandle<T> {
+        NodeHandle(self.0)
     }
 
 }
