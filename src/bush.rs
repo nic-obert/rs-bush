@@ -4,7 +4,7 @@ use std::{ptr::null_mut, collections::VecDeque};
 pub type IterItems<T, It> = std::iter::Map<It, fn(&BushNode<T>) -> &T>;
 pub type IterItemsMut<T, It> = std::iter::Map<It, fn(&mut BushNode<T>) -> &mut T>;
 
-pub type BushSlice<T> = (Box<BushNode<T>>, Box<BushNode<T>>);
+pub struct BushSlice<T>(pub Box<BushNode<T>>, pub Box<BushNode<T>>);
 
 
 pub struct NodeHandle<T> (*const BushNode<T>);
@@ -501,6 +501,14 @@ impl<T> Bush<T> {
     }
 
 
+    pub fn from_slice(slice: BushSlice<T>) -> Bush<T> {
+        Bush {
+            first: Box::leak(slice.0),
+            last: Box::leak(slice.1),
+        }
+    }
+
+
     pub fn is_empty(&self) -> bool {
         self.first.is_null()
     }
@@ -736,7 +744,7 @@ impl<T> Bush<T> {
 
 
     /// Extract a slice of the bush and the relative branches into a new bush, assumimg the nodes are n the bush's top layer
-    pub fn extract_slice(&mut self, start_node: NodeHandle<T>, end_node: NodeHandle<T>) -> Bush<T> {
+    pub fn extract_slice(&mut self, start_node: NodeHandle<T>, end_node: NodeHandle<T>) -> BushSlice<T> {
         let start_ptr = start_node.as_ptr() as *mut BushNode<T>;
         let end_ptr = end_node.as_ptr() as *mut BushNode<T>;
         let start_node = start_node.as_ref();
@@ -762,9 +770,8 @@ impl<T> Bush<T> {
             self.last = start_node.left;
         }
 
-        Bush {
-            first: start_ptr,
-            last: end_ptr
+        unsafe {
+            BushSlice(Box::from_raw(start_ptr), Box::from_raw(end_ptr))
         }
     }
 
@@ -775,7 +782,7 @@ impl<T> Bush<T> {
         for node in self.iter_nodes_mut() {
             if let Some(mut children) = node.children.take() {
                 children.flatten();
-                if let Some(children) = children.extract() {
+                if let Some(children) = children.as_slice() {
                     node.insert_slice_right(children);
                 }
             }
@@ -785,7 +792,7 @@ impl<T> Bush<T> {
 
 
     /// Return the first and last node of the bush's top layer, consuming the bush
-    pub fn extract(mut self) -> Option<BushSlice<T>> {
+    pub fn as_slice(mut self) -> Option<BushSlice<T>> {
         if self.first.is_null() {
             None
         } else {
@@ -795,7 +802,7 @@ impl<T> Bush<T> {
             self.first = null_mut();
             self.last = null_mut();
             unsafe {
-                Some((Box::from_raw(first), Box::from_raw(last)))
+                Some(BushSlice(Box::from_raw(first), Box::from_raw(last)))
             }
         }
     }
@@ -1023,7 +1030,7 @@ mod tests {
         bush.append(1);
         bush.append(2);
         bush.append(3);
-        let slice = bush.extract_slice(bush.first_node_handle().unwrap(), bush.last_node_handle().unwrap());
+        let slice = Bush::from_slice(bush.extract_slice(bush.first_node_handle().unwrap(), bush.last_node_handle().unwrap()));
         assert_eq!(slice.top_layer_length(), 3);
         assert_eq!(bush.top_layer_length(), 0);
         assert_eq!(slice.total_node_count(), 3);
@@ -1103,7 +1110,7 @@ mod tests {
             bush.last_node_mut().unwrap().children = Some(children);
         }
 
-        let _extracted = bush.extract().unwrap();
+        let _extracted = bush.as_slice().unwrap();
 
     }
 
