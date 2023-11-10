@@ -1,6 +1,6 @@
 [package]
 name = "rs-bush"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 authors = ["Nicholas Obert"]
 description = "A Rust implementation of the Bush data structure."
